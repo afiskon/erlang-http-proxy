@@ -57,7 +57,8 @@ handle(
     {ok, Body, _} = cowboy_req:body(Req),
     Url = case proplists:lookup(?SECRET_PROXY_HEADER, Headers) of
             {?SECRET_PROXY_HEADER, ThisNode} ->
-                lager:warning("~p Recursive request!", [self()]),
+                {Peer, _} =  cowboy_req:peer(Req),
+                lager:warning("~p Recursive request from ~p!", [self(), Peer]),
                 ?HACKER_REDIRECT_PAGE;
             none -> 
                 { ReqUrl, _ } = cowboy_req:url(Req),
