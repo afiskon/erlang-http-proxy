@@ -1,0 +1,13 @@
+{application, http_proxy,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  cowboy
+                 ]},
+  {mod, { http_proxy_app, []}},
+  {env, []}
+ ]}.
