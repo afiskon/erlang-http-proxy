@@ -1,7 +1,7 @@
-deps:
-	./rebar get-deps
 build: deps
 	./rebar compile
+deps:
+	./rebar get-deps
 run: build
 	./start.sh
 test: build
