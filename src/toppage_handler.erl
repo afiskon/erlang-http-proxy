@@ -201,9 +201,11 @@ optional_add_gzip_compression(
             {
                  [ {<<"content-encoding">>, <<"gzip">>} | Headers ],
                  Callbacks#callbacks {
-                     processor = fun(Data) ->
+                     processor =
+                     fun(<<>>) -> <<>>;
+                        (Data) ->
                          iolist_to_binary(
-                             zlib:deflate(ZlibStream, Data)
+                             zlib:deflate(ZlibStream, Data, sync)
                          )
                      end,
                      finalizer = fun() ->
