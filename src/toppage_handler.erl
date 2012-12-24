@@ -71,15 +71,20 @@ handle(
                 RewriteResult
         end,
     lager:debug("~p Fetching ~s", [self(), Url]),
-    AcceptGzip = lists:any(
-        fun(X) -> X == "gzip" end,
-        string:tokens(
-            lists:filter(
-                fun(X) -> X =/= 16#20 end,
-                binary_to_list(proplists:lookup(<<"accept-encoding">>))
-            ), ","
-        )
-    ), 
+    AcceptGzip =
+        case proplists:lookup(<<"accept-encoding">>, Headers) of
+            none -> false;
+            {_Key, AcceptEncoding} ->
+                lists:any(
+                    fun(X) -> X == "gzip" end,
+                    string:tokens(
+                        lists:filter(
+                            fun(X) -> X =/= 16#20 end,
+                            binary_to_list(AcceptEncoding)
+                        ), ","
+                    )
+                )
+        end, 
     ModifiedHeaders = modify_req_headers(Headers, ThisNode),
     {ibrowse_req_id, _RequestId} = ibrowse:send_req(
         binary_to_list(Url),
