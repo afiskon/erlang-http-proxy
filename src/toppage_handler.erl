@@ -24,7 +24,7 @@
         enable_gzip :: boolean(),
         rewrite_rules :: rewrite_rules(),
         ibrowse_options :: ibrowse_options(),
-        default_callbacks :: #callbacks{}
+        callbacks :: #callbacks{}
     }).
 
 -define(SECRET_PROXY_HEADER, <<"x-erlang-http-proxy">>).
@@ -36,12 +36,27 @@
 init(_Transport, Req, []) ->
     lager:debug("~p Initializing...", [self()]),
     { ok, EnableGzip } = application:get_env(http_proxy, enable_gzip),
+    {Headers, _} = cowboy_req:headers(Req),
+    AcceptGzip =
+        case proplists:lookup(<<"accept-encoding">>, Headers) of
+            none -> false;
+            {_Key, AcceptEncoding} ->
+                lists:any(
+                    fun(X) -> X == "gzip" end,
+                    string:tokens(
+                        lists:filter(
+                            fun(X) -> X =/= 16#20 end,
+                            binary_to_list(AcceptEncoding)
+                        ), ","
+                    )
+                )
+        end, 
     State = #state {
-        enable_gzip = EnableGzip,
+        enable_gzip = EnableGzip and AcceptGzip,
         this_node = this_node(),
         rewrite_rules = init_rewrite_rules(),
         ibrowse_options = init_ibrowse_options(),
-        default_callbacks = init_default_callbacks()
+        callbacks = init_default_callbacks()
     },
     {ok, Req, State}.
 
@@ -71,20 +86,6 @@ handle(
                 RewriteResult
         end,
     lager:debug("~p Fetching ~s", [self(), Url]),
-    AcceptGzip =
-        case proplists:lookup(<<"accept-encoding">>, Headers) of
-            none -> false;
-            {_Key, AcceptEncoding} ->
-                lists:any(
-                    fun(X) -> X == "gzip" end,
-                    string:tokens(
-                        lists:filter(
-                            fun(X) -> X =/= 16#20 end,
-                            binary_to_list(AcceptEncoding)
-                        ), ","
-                    )
-                )
-        end, 
     ModifiedHeaders = modify_req_headers(Headers, ThisNode),
     {ibrowse_req_id, _RequestId} = ibrowse:send_req(
         binary_to_list(Url),
@@ -95,7 +96,7 @@ handle(
         infinity
     ),
 
-    FinalReq = receive_loop(State, Req, State#state.default_callbacks, AcceptGzip),
+    FinalReq = receive_loop(State, Req),
     lager:debug("~p Done", [self()]),
     {ok, FinalReq, State}.
 
@@ -153,15 +154,16 @@ init_default_callbacks() ->
     end.
 
 receive_loop(
-        #state { enable_gzip = EnableGzip } = State,
-        Req,
-        #callbacks {
-            processor = Processor,
-            finalizer = Finalizer,
-            stream_next = StreamNext,
-            stream_close = StreamClose
-        } = Callbacks,
-        AcceptGzip) ->
+        #state { 
+            enable_gzip = EnableGzip,
+            callbacks = #callbacks {
+                processor = Processor,
+                finalizer = Finalizer,
+                stream_next = StreamNext,
+                stream_close = StreamClose
+            } = Callbacks
+        } = State,
+        Req) ->
     receive
         { ibrowse_async_headers, RequestId, Code, IBrowseHeaders } ->
             ok = StreamNext(RequestId),
@@ -169,7 +171,7 @@ receive_loop(
             ModifiedHeaders = modify_res_headers(Headers),
 
             { NewHeaders, NewCallbacks} = 
-                case EnableGzip and AcceptGzip of
+                case EnableGzip of
                     true ->
                         optional_add_gzip_compression(
                             ModifiedHeaders, Callbacks
@@ -178,11 +180,11 @@ receive_loop(
                         { ModifiedHeaders, Callbacks }
                 end,
             { ok, NewReq } = send_headers(Req, Code, NewHeaders),
-            receive_loop(State, NewReq, NewCallbacks, AcceptGzip);
+            receive_loop(State#state { callbacks = NewCallbacks }, NewReq);
         { ibrowse_async_response, RequestId, Data } ->
             ok = StreamNext(RequestId),
             ok = send_chunk(Req, Processor(Data)),
-            receive_loop(State, Req, Callbacks, AcceptGzip);
+            receive_loop(State, Req);
 
         { ibrowse_async_response_end, RequestId } ->
             ok = StreamClose(RequestId),
