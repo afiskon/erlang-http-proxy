@@ -52,7 +52,7 @@ init(_Transport, Req, []) ->
                 )
         end, 
     State = #state {
-        enable_gzip = EnableGzip and AcceptGzip,
+        enable_gzip = EnableGzip andalso AcceptGzip,
         this_node = this_node(),
         rewrite_rules = init_rewrite_rules(),
         ibrowse_options = init_ibrowse_options(),
